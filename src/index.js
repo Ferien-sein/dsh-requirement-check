@@ -107,6 +107,18 @@ export function apply(ctx) {
         properties: {
           text: { type: 'string', description: L.paramText },
           max_items: { type: 'integer', description: L.paramMaxItems },
+          // ★ 做什么类型：决定按哪套标准体检。
+          //   不传 → 按全部通用盲点查（与以前完全一致，向后兼容）。
+          //   传了 → 额外要求「该类型专属」的那几点：
+          //     插件：挂在哪个软件里、要不要跟宿主交换信息（接口）
+          //     脚本：怎么运行、需要什么运行环境
+          //   还能让「怎么交付」这一项的措辞换成对应类型的说法
+          //   （做程序是「exe 还是文件夹」，做插件是「装进宿主还是上架」）。
+          kind: {
+            type: 'string',
+            description: L.paramKind,
+            enum: ['program', 'plugin', 'script'],
+          },
           locale: {
             type: 'string',
             description: L.localeNoteFmt
@@ -130,10 +142,13 @@ export function apply(ctx) {
       const opts = { locale }
       const n = Number(a.max_items)
       if (Number.isFinite(n) && n > 0) opts.maxItems = Math.floor(n)
+      // 类型由调用方给；不认识的值 checkRequirement 会忽略（按全部通用盲点查）
+      if (typeof a.kind === 'string' && a.kind.trim()) opts.kind = a.kind.trim().toLowerCase()
       const r = checkRequirement(a.text, opts)
       const t = resolveTarget(a.target)
       return {
         locale: r.locale,
+        kind: r.kind,
         score: r.score,
         level: r.level,
         ok: r.ok,

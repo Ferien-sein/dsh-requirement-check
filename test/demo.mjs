@@ -1,5 +1,5 @@
 /** 演示：三语各跑一遍体检（含目标系统段）+ 模板，看实际输出。 */
-import { checkRequirement, renderReport } from '../src/blindspots.js'
+import { checkRequirement, renderReport, BLIND_SPOTS } from '../src/blindspots.js'
 import { TEMPLATES } from '../src/templates.js'
 import { renderTemplate, templateIndex } from '../src/templates_render.js'
 import { LOCALES, LOCALE_NAMES } from '../src/locale.js'
@@ -53,6 +53,28 @@ for (const loc of LOCALES) {
   const full = checkRequirement(FULL[loc], { locale: loc })
   console.log(`  分数 ${full.score}/100 · ${full.level} · ok=${full.ok} · 覆盖 ${full.covered}/${full.total}`)
   console.log('  ' + full.summary.split('\n')[0])
+
+  // 演示「做什么类型」的效果：同一段文字按不同类型检查，重点不一样。
+  // 这是这一版新增的能力 —— 不传 kind 就只查通用项（和以前一样）。
+  console.log('\n▸ 同一段「插件需求」，按不同类型检查有什么不同：')
+  const PLUGIN_DEMO = {
+    'zh-CN': '帮我做个插件，能检查我写的需求。挂在 DeepSeek Harness 里，打一个命令触发。',
+    'zh-TW': '幫我做個外掛，能檢查我寫的需求。掛在 DeepSeek Harness 裡，打一個指令觸發。',
+    en: 'Build me a plugin that checks my requirement text. Inside DeepSeek Harness, '
+      + 'triggered by a command.',
+  }[loc]
+  for (const kind of ['program', 'plugin', 'script']) {
+    const r = checkRequirement(PLUGIN_DEMO, { locale: loc, kind, maxItems: 3 })
+    // 该类型**多查了哪些项**（不管有没有被覆盖，这才是类型之间的差别）
+    const extras = BLIND_SPOTS.filter((s) => s.kinds.includes(kind)).map((s) => s.id)
+    const missingIds = r.missing.map((m) => m.id)
+    const notCovered = extras.filter((x) => missingIds.includes(x))
+    console.log(`  kind=${kind.padEnd(8)} 共 ${String(r.total).padStart(2)} 项 · 分数 ${String(r.score).padStart(3)}`
+      + (extras.length
+        ? ` · 多查: ${extras.join(', ')}`
+          + (notCovered.length ? `（这段没覆盖: ${notCovered.join(', ')}）` : '（这段都覆盖了）')
+        : ' · 纯通用项，无类型专属'))
+  }
 }
 
 console.log('\n' + '='.repeat(72))

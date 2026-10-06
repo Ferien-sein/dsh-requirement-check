@@ -41,7 +41,51 @@ const SPOTS = [
   { id: 'frequency', severity: 'low', ch: /每天|每周|每月|经常|偶尔|一次|频率|多久用|用时|几分钟|小时|每天下午|早上|日(报|结)|月度|季度/, en: /\b(every ?day|daily|weekly|monthly|quarterly|once a (day|week|month)|often|occasionally|how often|takes? .{0,15}(minutes?|hours?)|a few minutes)\b/i },
   { id: 'pain', severity: 'mid', ch: /现在|目前|以前|手动|人工|本来|原先|复制粘贴|一个个|花(了)?\s*\d+\s*(分钟|小时)|一直是|过去|原来是/, en: /\b(currently|right now|at the moment|today i|used to|previously|manually|by hand|copy(-| )?past|one by one|takes? (me )?(about )?\d+ ?(min|minute|hour)|it used to)\b/i },
   { id: 'reference', severity: 'low', ch: /样例|示例文件|参照|参考|像(微信|excel|某)|模仿|截图|样本|模板.{0,6}提供|我给你(一份|个)|照着/, en: /\b(sample (file|data)|example (file|data)|reference|similar to|like (excel|notion|trello|wechat)|resembl|mimic|screenshot|i ?'?ll (give|send) you (a|an|the) (sample|file|example))\b/i },
+  // delivery 的命中规则保持和以前一样（不做扩张）：
+  // 试过加「插件|apk|网址」，结果那段英文测试文本里出现了 "plugin" 就被误命中，
+  // 把「未提交付方式」的用例带偏了。想让插件/脚本的交付问法不同，
+  // 用下面的 `delivery.program / .plugin / .script` 文案覆盖即可，不需要改规则。
   { id: 'delivery', severity: 'mid', ch: /exe|快捷方式|桌面|双击|怎么(打开|运行|启动|用)|安装包|交付|打包|绿色版|给我(一个|个)/, en: /\b(exe|shortcut|desktop|double-?click|how (do i|to) (open|run|start|launch)|installer|deliver|package|portable|standalone|give me (a|an))\b/i },
+
+  // ==========================================================================
+  // 「做什么类型」专属的盲点（kind 维度）
+  // ==========================================================================
+  // 姊妹项目（Windows 桌面应用）的问卷有三层自适应：做什么类型 × 跑什么平台 ×
+  // 系统位数。插件这边原来只有平台一层，于是「做插件」的需求会被按「做程序」
+  // 的标准检查 —— 问不到最关键的那几点。这里补上。
+  //
+  // ★ 这些项默认**不算进体检**（kinds 限定），只有调用方显式传 kind 才生效，
+  //   所以不传 kind 时行为与以前完全一致（老调用方不受影响）。
+  //
+  // ★ 规则要「够具体」：第一版写得太宽（比如 en 用了裸的 read / insert），
+  //   结果普通句子里出现 "read" 就被判为「提过宿主接口」—— 反而漏报。
+  //   宁可误报是针对**用户需求描述**说的，但规则本身不能宽到被常用词命中。
+
+  // —— 插件专属 ——
+
+  // 做插件最容易卡住的地方：不说清宿主是谁，写出来的插件根本没处挂。
+  { id: 'host-software', severity: 'high', kinds: ['plugin'],
+    ch: /挂在|宿主|插件|扩展|浏览器|chrome|edge|vscode|cursor|obsidian|word|excel|wps|photoshop|figma|dsh|deepseek|jetbrains|idea|pycharm|微信小程序/,
+    en: /\b(plugin|extension|add-?on|host (app|software|application)|chrome|edge|firefox|vscode|cursor|obsidian|notion|photoshop|figma|dsh|deepseek|jetbrains|as an? (extension|plugin))\b/i },
+
+  // 插件和程序最大的区别：它挂在别人的流程里被调用。
+  // 不说清「谁在什么时候叫它」，写出来只能靠猜。
+  // 规则要具体：必须是「宿主接口/读当前内容/写回」这类说法，不能是裸的 read。
+  { id: 'host-api', severity: 'high', kinds: ['plugin'],
+    ch: /接口|api|读(取|回)?(它|宿主|当前|正在)|写回|插回|插入到|回调|hook|钩子|监听(事件|宿主)|注入|sdk|集成到|宿主的(内容|数据|接口)/i,
+    en: /\b(api|sdk|hook|callback|listener|inject|read (the|its|host'?s) (current|selected|content)|write (back|into)|insert (back )?into|integrate (with|into)|host'?s (api|content|data|interface))\b/i },
+
+  // —— 脚本专属 ——
+
+  // 脚本没有安装包，关键是「怎么跑起来」。
+  { id: 'script-run', severity: 'mid', kinds: ['script'],
+    ch: /双击|命令行|终端|cmd|powershell|bash|定时|计划任务|任务计划|批量(跑|执行)|一次性|手动(跑|执行)|怎么(运行|执行|跑)|自动(跑|执行)/i,
+    en: /\b(double-?click|command ?line|terminal|console|cmd|powershell|bash|cron|task scheduler|one-?off|how (do i|to) run)\b/i },
+
+  // 脚本依赖的运行环境（Python 版本 / Node / 额外装的库）。
+  { id: 'script-runtime', severity: 'mid', kinds: ['script'],
+    ch: /python|node\.?js|npm|pip|依赖|第三方(库|包)|虚拟环境|venv|conda|解释器|运行(环境|时)|python\s*\d/i,
+    en: /\b(python\s*\d|node(\.js)?\s*\d|npm|pip|dependenc|librar(ies|y)|\bvenv\b|virtualenv|conda|interpreter|runtime|third-?party (libraries|packages))\b/i },
 ]
 
 const SPOT_IDS = SPOTS.map((s) => s.id)
@@ -72,38 +116,66 @@ export function checkRequirement(text, options = {}) {
   const raw = typeof text === 'string' ? text : ''
   const src = raw.trim()
 
+  // ---- 「做什么类型」维度 ----------------------------------------------------
+  // 不传 kind → 只查**通用项**（不带 kinds 的那些）。
+  //             这一层是"什么都该交代清楚"的要点，与类型无关。
+  //             分母因此保持 15，分数语义与加类型分支之前完全一致。
+  // 传了 kind → 通用项 + 该类型专属项。
+  //
+  // ★ 为什么"不传 kind"不能算上类型专属项：
+  //   那些项（如「宿主接口」）对做程序的人毫无意义。算进去会让分母虚高、
+  //   分数被拉低（实测：英文完整用例从 ≥85 掉到 82），也会报出答非所问的
+  //   缺失项。这样也保证了向后兼容。
+  const kind = typeof options.kind === 'string' ? options.kind.trim().toLowerCase() : ''
+  const KNOWN_KINDS = ['program', 'plugin', 'script']
+  const activeKind = KNOWN_KINDS.includes(kind) ? kind : ''
+  const spots = activeKind
+    ? SPOTS.filter((s) => !s.kinds || s.kinds.includes(activeKind))
+    : SPOTS.filter((s) => !s.kinds)
+
+  /** 取文案：优先用「按类型覆盖」的键（如 'delivery.plugin'），没有就回退通用键。 */
+  const msg = (field, spotId) => {
+    const table = L[field] || {}
+    if (activeKind) {
+      const byKind = table[`${spotId}.${activeKind}`]
+      if (byKind) return byKind
+    }
+    return table[spotId]
+  }
+
   const toPublic = (spot) => ({
     id: spot.id,
     severity: spot.severity,
-    title: L.spotTitles[spot.id],
-    why: L.spotWhy[spot.id],
-    fix: L.spotFix[spot.id],
+    title: msg('spotTitles', spot.id),
+    why: msg('spotWhy', spot.id),
+    fix: msg('spotFix', spot.id),
   })
 
   if (!src) {
     return {
       locale,
+      kind: activeKind || null,
       ok: false,
       score: 0,
       level: 'empty',
-      total: SPOTS.length,
+      total: spots.length,
       covered: 0,
-      missing: SPOTS.map(toPublic),
+      missing: spots.map(toPublic),
       summary: L.emptyReport,
-      report: fmt(L.headerFmt, { score: 0, level: L.level.empty, covered: 0, total: SPOTS.length }) +
+      report: fmt(L.headerFmt, { score: 0, level: L.level.empty, covered: 0, total: spots.length }) +
         '\n\n' + L.emptyReport,
     }
   }
 
   const covered = []
   const missing = []
-  for (const spot of SPOTS) {
+  for (const spot of spots) {
     const rules = pickRules(spot, locale)
     ;(rules.some((re) => re.test(src)) ? covered : missing).push(spot)
   }
 
   const weight = { high: 3, mid: 2, low: 1 }
-  const maxScore = SPOTS.reduce((s, x) => s + weight[x.severity], 0)
+  const maxScore = spots.reduce((s, x) => s + weight[x.severity], 0)
   const gotScore = covered.reduce((s, x) => s + weight[x.severity], 0)
   let score = Math.round((gotScore / maxScore) * 100)
   const rich = RICH_MARKERS.filter((re) => re.test(src)).length
@@ -159,7 +231,7 @@ export function checkRequirement(text, options = {}) {
       score,
       level: L.level[level],
       covered: covered.length,
-      total: SPOTS.length,
+      total: spots.length,
     }) +
     '\n\n' +
     summary +
@@ -168,10 +240,12 @@ export function checkRequirement(text, options = {}) {
 
   return {
     locale,
+    // 传了 kind 就回显（让调用方知道这次按什么标准体检的）；没传为 null
+    kind: activeKind || null,
     ok: highMissing.length === 0,
     score,
     level,
-    total: SPOTS.length,
+    total: spots.length,
     covered: covered.length,
     missing: shown,
     summary,
@@ -250,6 +324,10 @@ export const BLIND_SPOTS = SPOTS.map((s) => ({
   severity: s.severity,
   ch: s.ch,
   en: s.en,
+  // ★ 带上 kinds：调用方（和测试）需要知道哪些项只在特定类型下参与。
+  //   不带的话，外部没法算「通用项有几条、某类型专属有几条」——
+  //   实测就因此算错过分母。空数组表示「通用项，任何类型都查」。
+  kinds: s.kinds ? [...s.kinds] : [],
 }))
 
 export { SPOT_IDS, detectLocale }

@@ -104,7 +104,11 @@ print("  全部通过" if NODE and not any("语法错误" in p for p in problems
 # ---------------------------------------------------------------- 盲区 id 来源
 print("\n=== 盲区清单（从 blindspots.js 读真实 id）===")
 bs = io.open(os.path.join(PLUGIN, "src/blindspots.js"), encoding="utf-8").read()
-ids = re.findall(r"\{ id: '([a-z\-]+)', severity:", bs)
+# ★ 正则不能要求 `{ id: 'x', severity:` 紧邻 —— 加了「做什么类型」维度后，
+#   有的项在两者之间插了 `kinds: [...]`，写死顺序会**静默漏掉那几项**
+#   （实测：4 个类型专属项没被读到，于是三语完整性检查把它们的文案
+#     当成"多余键"，而真正缺的却查不出来）。
+ids = re.findall(r"\{ id: '([a-z\-]+)',\s*(?:severity|kinds)", bs)
 print("  %d 项: %s" % (len(ids), ", ".join(ids)))
 if len(ids) != len(set(ids)):
     problems.append("盲区 id 有重复")
@@ -139,23 +143,71 @@ for loc in ("zh-TW", "en"):
 if len({len(v) for v in top.values()}) == 1:
     print("  三语顶层键数一致")
 
-# 每组盲区文案的键 == 盲区数
-print("\n=== 每组盲区文案完整性（15 项 × 3 组 × 3 语）===")
-for loc, b in blocks.items():
+# 每组盲区文案的完整性
+#
+# ★ 这里换成「跑 node 去读真实导出」，不再用正则从源码里抠键。
+#   原因：正则我改坏了两次 —— 先是只认单引号（新加的键是双引号），
+#   再是字符类漏了 `-`（scope-out 被截成 scope）。靠正则解析 JS 源码太脆，
+#   而 Node 就在旁边，直接读导出既准确又不依赖书写风格。
+print("\n=== 每组盲区文案完整性（%d 项 × 3 组 × 3 语）===" % len(ids))
+KINDS = ("program", "plugin", "script")
+
+
+def node_json(script, fallback):
+    """跑一段 node 脚本（ESM），把 JSON 结果读回来。失败就记问题并给 fallback。"""
+    r = subprocess.run([NODE, "--input-type=module", "-e", script], cwd=PLUGIN,
+                       capture_output=True, text=True, encoding="utf-8")
+    if r.returncode != 0:
+        tail = (r.stderr or "").strip().splitlines()
+        problems.append("读取文案结构失败: %s" % (tail[-1] if tail else "?"))
+        return fallback
+    try:
+        return json.loads(r.stdout)
+    except Exception as e:  # noqa: BLE001
+        problems.append("文案结构不是合法 JSON: %r" % (e,))
+        return fallback
+
+
+# LOCALES 在 locale.js 里（不在 i18n.js）——这个坑踩过一次，写成注释免得再犯
+_size = node_json("""
+import { LOCALES } from './src/locale.js'
+import { stringsFor } from './src/i18n.js'
+const out = {}
+for (const loc of LOCALES) {
+  const S = stringsFor(loc)
+  out[loc] = {}
+  for (const g of ['spotTitles', 'spotWhy', 'spotFix']) {
+    out[loc][g] = Object.keys(S[g] || {})
+  }
+}
+console.log(JSON.stringify(out))
+""", {})
+
+for loc in blocks:
+    got = _size.get(loc) if isinstance(_size, dict) else None
+    if not got:
+        problems.append("%s: 读不到文案键" % loc)
+        continue
     for group in ("spotTitles", "spotWhy", "spotFix"):
-        gs = b.index(group + ": {")
-        ge = b.index("\n    },", gs)
-        body = b[gs:ge]
-        keys = []
-        for i in ids:
-            pat = r"\n      '%s':" % re.escape(i) if "-" in i else r"\n      %s:" % re.escape(i)
-            if re.search(pat, body):
-                keys.append(i)
-        missing = [i for i in ids if i not in keys]
+        keys = list(got.get(group) or [])
+        plain = [k for k in keys if "." not in k]
+        missing = [i for i in ids if i not in plain]
         if missing:
             problems.append("%s.%s 缺键 %s" % (loc, group, missing))
             print("  ★ %-7s %-11s 缺: %s" % (loc, group, missing))
-    print("  %-7s 三组齐全" % loc if not any(loc in p for p in problems) else "  %-7s 见上" % loc)
+        # 「id.类型」形式的按类型覆盖必须三组齐全（标题换了理由也要换）
+        for k in keys:
+            if "." not in k:
+                continue
+            base, _, kind = k.rpartition(".")
+            if base not in ids or kind not in KINDS:
+                problems.append("%s.%s 有多余键（既不是盲点 id 也不是 id.类型）: %s"
+                                % (loc, group, k))
+            elif not all(k in list(got.get(g2) or [])
+                         for g2 in ("spotTitles", "spotWhy", "spotFix")):
+                problems.append("%s: 按类型覆盖键 %s 没有三组齐全" % (loc, k))
+    ok_here = not any(("%s." % loc) in p for p in problems)
+    print("  %-7s 三组齐全" % loc if ok_here else "  %-7s 见上" % loc)
 
 # 跨语言污染
 SIMPLIFIED_IN_TRAD = ["预设", "目标", "位数", "说明", "系统", "电脑", "资讯", "选择", "默认"]

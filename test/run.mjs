@@ -122,15 +122,38 @@ t('15 项盲区的标题/理由/句式三语齐全且非空', () => {
   }
 })
 
-t('每组盲区文案的键数等于盲区总数（防止多出无用键）', () => {
+t('每组盲区文案的键数正确（含「按类型覆盖」键，且没有多余键）', () => {
+  const KINDS = ['program', 'plugin', 'script']
   for (const loc of LOCALES) {
     const L = stringsFor(loc)
     for (const group of ['spotTitles', 'spotWhy', 'spotFix']) {
       const keys = Object.keys(L[group])
-      assert.equal(
-        keys.length, SPOT_IDS.length,
-        `${loc}.${group} 有 ${keys.length} 个键，但盲区有 ${SPOT_IDS.length} 个：${keys.join(',')}`
-      )
+      // 合法键有两类：
+      //   1) 盲点 id 本身
+      //   2) 「id.类型」形式的按类型覆盖（如 delivery.plugin）
+      //      —— 让同一项在不同类型下的措辞不同（做插件时不该问「要 exe 吗」）
+      const unknown = keys.filter((k) => {
+        if (SPOT_IDS.includes(k)) return false
+        const dot = k.lastIndexOf('.')
+        if (dot > 0) {
+          const base = k.slice(0, dot)
+          const kind = k.slice(dot + 1)
+          return !(SPOT_IDS.includes(base) && KINDS.includes(kind))
+        }
+        return true
+      })
+      assert.equal(unknown.length, 0,
+        `${loc}.${group} 有多余键（既不是盲点 id 也不是 id.类型）: ${unknown.join(',')}`)
+      // 每个盲点本身必须有键
+      const missing = SPOT_IDS.filter((id) => !Object.prototype.hasOwnProperty.call(L[group], id))
+      assert.equal(missing.length, 0, `${loc}.${group} 缺少盲点键: ${missing.join(',')}`)
+      // 类型覆盖键必须成对存在（titles 有，why/fix 也要有），否则标题换了、理由没换
+      for (const k of keys.filter((x) => x.includes('.'))) {
+        for (const g2 of ['spotTitles', 'spotWhy', 'spotFix']) {
+          assert.ok(Object.prototype.hasOwnProperty.call(L[g2], k),
+            `${loc}: ${k} 在 ${g2} 里缺失（按类型覆盖必须三个字段都有）`)
+        }
+      }
     }
   }
 })
@@ -162,6 +185,102 @@ t('盲区结构完整（id/severity/ch/en 齐全，id 不重复）', () => {
     ids.add(s.id)
   }
   assert.ok(BLIND_SPOTS.length >= 10)
+})
+
+// ---- 「做什么类型」维度 ---------------------------------------------------
+// 为什么要有这一组：姊妹项目（Windows 桌面应用）的问卷有三层自适应，
+// 插件这边原来只有平台一层 —— 于是「做插件」的需求被按「做程序」的标准检查，
+// 问不到最关键的那几点（挂在哪个软件里、要不要宿主接口）。
+// 这里把新的 kind 行为的契约钉住。
+
+const PLUGIN_TEXT = '给 DeepSeek Harness 做一个插件。挂在 DSH 里，我打一个命令才触发。'
+  + '要能读我正在对话框里打的内容，把结果插回去，所以需要它的接口。'
+  + '只在我自己机器上装好能用。'
+
+const PROGRAM_TEXT = '帮我做一个合并 Excel 的小工具，做成一个 exe，双击打开。'
+  + '要跑在 Windows 64 位，数据不能上传。'
+
+// 通用项 = kinds 为空的那些（任何类型都查）；类型专属项 = kinds 含该类型
+const genericSpots = () => BLIND_SPOTS.filter((s) => !s.kinds || s.kinds.length === 0)
+const kindSpots = (kind) => BLIND_SPOTS.filter((s) => s.kinds && s.kinds.includes(kind))
+
+t('kind 参数：不传时只查通用项（分数语义与加类型之前一致）', () => {
+  const noKind = checkRequirement(PROGRAM_TEXT, { locale: 'zh-CN' })
+  assert.equal(noKind.kind, null, '不传 kind 时应回显 null')
+  const generic = genericSpots()
+  assert.equal(noKind.total, generic.length,
+    `不传 kind 时总数应为通用项数 ${generic.length}，实际 ${noKind.total}`)
+  // 类型专属项不该出现在结果里
+  const missingIds = noKind.missing.map((m) => m.id)
+  for (const id of ['host-software', 'host-api', 'script-run', 'script-runtime']) {
+    assert.ok(!missingIds.includes(id), `不传 kind 时不该出现类型专属项 ${id}`)
+  }
+})
+
+t('kind=plugin：查通用项 + 插件专属项，且不含脚本专属项', () => {
+  const r = checkRequirement(PLUGIN_TEXT, { locale: 'zh-CN', kind: 'plugin' })
+  assert.equal(r.kind, 'plugin')
+  const ids = r.missing.map((m) => m.id)
+  assert.ok(!ids.includes('script-run'), '插件检查里不该有 script-run')
+  assert.ok(!ids.includes('script-runtime'), '插件检查里不该有 script-runtime')
+  // host-software / host-api 只在插件类型下参与（这段文字两条都提到了，所以应被覆盖）
+  const coveredIds = kindSpots('plugin').map((s) => s.id)
+  assert.equal(coveredIds.length, 2, '插件专属项应有 2 条')
+  assert.equal(r.total, genericSpots().length + 2)
+})
+
+t('kind 三种类型都能跑，且总数各自正确', () => {
+  const generic = genericSpots().length
+  for (const kind of ['program', 'plugin', 'script']) {
+    const extra = kindSpots(kind).length
+    const r = checkRequirement('随便写一段话', { locale: 'zh-CN', kind })
+    assert.equal(r.kind, kind)
+    assert.equal(r.total, generic + extra, `${kind} 总数应为 ${generic + extra}，实际 ${r.total}`)
+    assert.ok(r.score >= 0 && r.score <= 100, `${kind} 分数越界: ${r.score}`)
+  }
+})
+
+t('kind 传不认识的值：退回「通用项」而不是报错', () => {
+  const r = checkRequirement('随便写一段话', { locale: 'zh-CN', kind: 'spaceship' })
+  assert.equal(r.kind, null, '不认识的值应回显 null')
+  assert.equal(r.total, genericSpots().length)
+})
+
+t('「怎么交付」的文案按类型换（做插件时不该问 exe）', () => {
+  const noKind = checkRequirement('我要做点东西', { locale: 'zh-CN', maxItems: 30 })
+  const asPlugin = checkRequirement('我要做点东西', { locale: 'zh-CN', kind: 'plugin', maxItems: 30 })
+  const g = noKind.missing.find((m) => m.id === 'delivery')
+  const p = asPlugin.missing.find((m) => m.id === 'delivery')
+  assert.ok(g && p, 'delivery 应出现在缺失项里')
+  assert.notEqual(g.title, p.title, '程序与插件的 delivery 标题应该不同')
+  assert.ok(p.why.includes('宿主') || p.why.includes('插件'), '插件版理由应提宿主/插件，实际: ' + p.why)
+  // 三语都要有按类型覆盖，不能只补一种语言
+  for (const loc of LOCALES) {
+    const L = stringsFor(loc)
+    for (const k of ['delivery.program', 'delivery.plugin', 'delivery.script']) {
+      for (const grp of ['spotTitles', 'spotWhy', 'spotFix']) {
+        assert.ok(L[grp][k], `${loc}.${grp} 缺按类型覆盖键 ${k}`)
+      }
+    }
+  }
+})
+
+t('简易类型专属规则不该被常见词误命中（防漏报）', () => {
+  // 「read」这类常用词第一版被写进 host-api 的英文规则，结果普通句子就命中了。
+  // 这里用一段**不涉及宿主接口**的普通英文需求，确认 host-api 仍然报缺失。
+  const plain = 'I want to build a small tool. It should run on Windows and read a CSV file '
+    + 'from my folder and write a summary.'
+  const r = checkRequirement(plain, { locale: 'en', kind: 'plugin', maxItems: 30 })
+  const ids = r.missing.map((m) => m.id)
+  assert.ok(ids.includes('host-api'),
+    '这段文字没提宿主接口，host-api 应报缺失（说明规则没被 read/write 误命中）')
+})
+
+t('空输入也要尊重 kind（总数按类型算）', () => {
+  const r = checkRequirement('', { locale: 'zh-CN', kind: 'plugin' })
+  assert.equal(r.score, 0)
+  assert.equal(r.kind, 'plugin')
+  assert.equal(r.total, genericSpots().length + 2)
 })
 
 t('空输入三语都返回空报告且不抛', () => {

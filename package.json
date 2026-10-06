@@ -1,7 +1,7 @@
 {
   "name": "dsh-requirement-check",
-  "version": "0.4.0",
-  "description": "Requirement tools for DeepSeek Harness (Simplified Chinese / Traditional Chinese / English): blind-spot check on your own requirement text, 8 fill-in templates, local OS/bitness detection (Windows/macOS/Linux, 32/64-bit, plus Android/iOS/HarmonyOS/web targets), a GitHub duplicate check that searches before you build, and a language switch.",
+  "version": "0.5.0",
+  "description": "Requirement tools for DeepSeek Harness (Simplified Chinese / Traditional Chinese / English): blind-spot check on your own requirement text, 8 fill-in templates, local OS/bitness detection (Windows/macOS/Linux, 32/64-bit, plus Android/iOS/HarmonyOS/web targets), a GitHub duplicate check that searches before you build, a language switch, and an optional kind (program/plugin/script) that applies extra checks for plugins and scripts.",
   "license": "MIT",
   "type": "module",
   "main": "./src/index.js",
