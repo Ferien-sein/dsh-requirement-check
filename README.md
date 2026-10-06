@@ -236,7 +236,7 @@ requirement_check({ text: '...', locale: 'en', target: 'macos-arm64' })
 
 ```bash
 npm run check            # 八个模块的语法检查
-npm test                 # 66 项测试（语言 + 逻辑 + 平台 + 契约 + 端到端）
+npm test                 # 96 项测试（run.mjs 71 项 + lookup.mjs 25 项）
 npm run verify           # 发布前检查：BOM / 漏翻 / 跨语言污染 / 模板完整性
 npm run fault-injection  # 反证：故意删一个翻译键，确认测试真的能抓到
 npm run demo             # 三语各跑一遍，看实际输出
@@ -278,7 +278,8 @@ npm run demo             # 三语各跑一遍，看实际输出
 │  ├─ templates_render.js 模板渲染与查询
 │  └─ config-store.js     语言偏好持久化（~/.dsh/requirement-check.json）
 ├─ test/
-│  ├─ run.mjs             66 项测试
+│  ├─ run.mjs             71 项测试
+│  ├─ lookup.mjs          25 项测试（查重逻辑，用 mock 不联网）
 │  └─ demo.mjs            三语演示
 ├─ tools/
 │  ├─ gen_templates.py    生成 templates.js（192 条文案，手写易漏）
