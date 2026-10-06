@@ -1,0 +1,70 @@
+{
+  "name": "dsh-requirement-check",
+  "version": "0.4.0",
+  "description": "Requirement tools for DeepSeek Harness (Simplified Chinese / Traditional Chinese / English): blind-spot check on your own requirement text, 8 fill-in templates, local OS/bitness detection (Windows/macOS/Linux, 32/64-bit, plus Android/iOS/HarmonyOS/web targets), a GitHub duplicate check that searches before you build, and a language switch.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./src/index.js",
+  "exports": {
+    ".": {
+      "default": "./src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "src",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "requirement",
+    "requirements-analysis",
+    "clarification",
+    "blind-spot",
+    "template",
+    "i18n",
+    "traditional-chinese",
+    "english",
+    "platform",
+    "32-bit",
+    "64-bit",
+    "windows",
+    "macos",
+    "linux",
+    "github",
+    "duplicate-check",
+    "search-before-build",
+    "android",
+    "ios",
+    "harmonyos"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node test/run.mjs && node test/lookup.mjs",
+    "check": "node --check src/index.js && node --check src/blindspots.js && node --check src/i18n.js && node --check src/locale.js && node --check src/platform.js && node --check src/templates.js && node --check src/templates_render.js && node --check src/config-store.js",
+    "verify": "python tools/preflight.py",
+    "fault-injection": "node tools/prove-fault-injection.mjs",
+    "demo": "node test/demo.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.1"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  }
+}

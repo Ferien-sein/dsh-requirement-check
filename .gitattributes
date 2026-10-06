@@ -1,0 +1,17 @@
+# 统一换行符：仓库里一律 LF。
+#
+# 插件是纯 JS（Node），没有 .bat，所以规则简单些。
+# 但同样要声明，否则 Windows 上检出后每行都变成 CRLF，
+# diff 会出现整篇「被改过」的噪音。
+* text=auto eol=lf
+
+# JSON / YAML 必须 LF（有的工具对 BOM 和 CRLF 敏感）
+*.json text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+
+# 图片二进制
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary

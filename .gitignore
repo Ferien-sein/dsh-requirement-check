@@ -1,0 +1,10 @@
+# 测试时链过来的本地依赖（发布包由 package.json 的 files 白名单控制）
+node_modules/
+
+# 编辑器
+.vscode/
+.idea/
+
+# 系统
+Thumbs.db
+desktop.ini
