@@ -12,11 +12,37 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 
-PLUGIN = r"E:\APP\GitHub\dsh-requirement-check"
-NODE = r"C:\Users\汐仔小旋风\.dsh\dsh-runtimes\dsh-primary-runtime\dependencies\node\bin\node.exe"
+# ★ 路径不能用写死的本机绝对路径：
+#   1) 别人克隆下来根本跑不了 —— 等于把检查脚本绑死在一台机器上
+#   2) 也会把作者的用户名和目录结构带进公开仓库
+#   改成从脚本自身位置推算，并用 shutil.which 找 node —— 谁克隆都能跑。
+PLUGIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def find_node():
+    """找 node 可执行文件：环境变量 > PATH > DSH 自带运行时。"""
+    env = os.environ.get("XBSH_NODE") or os.environ.get("NODE")
+    if env and os.path.exists(env):
+        return env
+    found = shutil.which("node")
+    if found:
+        return found
+    for cand in (
+        os.path.join(os.path.expanduser("~"), ".dsh", "dsh-runtimes",
+                     "dsh-primary-runtime", "dependencies", "node", "bin", "node.exe"),
+        os.path.join(os.path.expanduser("~"), ".dsh", "dsh-runtimes",
+                     "dsh-primary-runtime", "dependencies", "node", "bin", "node"),
+    ):
+        if os.path.exists(cand):
+            return cand
+    return None
+
+
+NODE = find_node()
 
 problems = []
 
@@ -63,12 +89,17 @@ print("  files:", pkg.get("files"))
 
 # ---------------------------------------------------------------- 语法
 print("\n=== 语法检查 ===")
+if not NODE:
+    problems.append("找不到 node（设 XBSH_NODE 环境变量，或把 node 加进 PATH）")
+    print("  ★ 找不到 node —— 设 XBSH_NODE，或把 node 加进 PATH")
 for f in sorted(k for k in files if k.endswith((".js", ".mjs"))):
+    if not NODE:
+        break
     r = subprocess.run([NODE, "--check", os.path.join(PLUGIN, f)], capture_output=True, text=True)
     if r.returncode != 0:
         problems.append("语法错误: " + f)
         print("  错误 " + f)
-print("  全部通过" if not any("语法错误" in p for p in problems) else "")
+print("  全部通过" if NODE and not any("语法错误" in p for p in problems) else "")
 
 # ---------------------------------------------------------------- 盲区 id 来源
 print("\n=== 盲区清单（从 blindspots.js 读真实 id）===")
@@ -152,12 +183,22 @@ for loc in ("zh-CN", "zh-TW", "en"):
 
 # ---------------------------------------------------------------- 测试
 print("\n=== 运行测试 ===")
-r = subprocess.run([NODE, "test/run.mjs"], cwd=PLUGIN, capture_output=True, text=True, encoding="utf-8")
-out = (r.stdout or "") + (r.stderr or "")
-for line in out.strip().splitlines()[-3:]:
-    print("  " + line)
-if r.returncode != 0:
-    problems.append("测试未通过")
+if not NODE:
+    problems.append("没跑测试：找不到 node")
+    print("  跳过（找不到 node）")
+else:
+    # 两个测试文件都要跑（lookup.mjs 是查重逻辑的测试）
+    for entry in ("test/run.mjs", "test/lookup.mjs"):
+        if not os.path.exists(os.path.join(PLUGIN, entry)):
+            problems.append("缺少测试文件: " + entry)
+            continue
+        r = subprocess.run([NODE, entry], cwd=PLUGIN, capture_output=True,
+                           text=True, encoding="utf-8")
+        out = (r.stdout or "") + (r.stderr or "")
+        for line in out.strip().splitlines()[-2:]:
+            print("  " + line)
+        if r.returncode != 0:
+            problems.append("测试未通过: " + entry)
 
 print("\n" + "=" * 60)
 if problems:

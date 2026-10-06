@@ -3,9 +3,14 @@
 
 为什么用脚本生成：三语 × 8 套 × 每套 8 个字段 = 192 条文案，
 手写容易漏字段、错位。这里用结构化数据一次写全，再渲染成 JS。
+
+输出位置：从脚本自身位置推算（<仓库>/src/templates.js），
+不写死本机绝对路径 —— 否则别人克隆下来一跑就把文件写到作者机器上，
+而且会把作者的用户名和目录结构暴露进公开仓库。
 """
 import io
 import json
+import os
 
 # 每套模板：id + 三语的 name/scene + 8 个字段（三语）
 # 字段顺序固定，保证三语一一对应。
@@ -428,7 +433,9 @@ for key_zh, key_en in FIELD_KEYS.items():
 lines.append("}")
 
 out = "\n".join(lines) + "\n"
-path = r"E:\APP\GitHub\dsh-requirement-check\src\templates.js"
+# 输出到本仓库的 src/templates.js（不写死本机绝对路径）
+path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                    "src", "templates.js")
 io.open(path, "w", encoding="utf-8").write(out)
 print("已生成:", path)
 print("模板数:", len(T))
